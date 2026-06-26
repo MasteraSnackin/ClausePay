@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { access } from "node:fs/promises";
 import path from "node:path";
+import { advanceCampaignWorkflow } from "../src/server/agent/advanceCampaignWorkflow";
 import { runRecoveryCampaign } from "../src/server/agent/runRecoveryAgent";
 import { getEnvStatus } from "../src/server/env";
 
@@ -27,6 +28,8 @@ const campaign = await runRecoveryCampaign({
 const integrations = Object.fromEntries(campaign.integrationStatus.map((status) => [status.name, status.state]));
 const clickhouseStatus = campaign.integrationStatus.find((status) => status.name === "clickhouse");
 const expectedClickHouseDetail = `Wrote ${campaign.events.length} events, ${campaign.evidence.length} sources, ${campaign.actions.length} actions, ${campaign.sourceActionTrace.length} trace links, and ${campaign.workflow.length} workflow steps to ClickHouse.`;
+const advancedCampaign = await advanceCampaignWorkflow(campaign.id);
+const advancedClickHouseStatus = advancedCampaign?.integrationStatus.find((status) => status.name === "clickhouse");
 
 assert(campaign.evidence.length >= 2, "Expected at least 2 evidence sources.");
 assert(campaign.actions.length === 8, "Expected 8 recovery actions.");
@@ -37,6 +40,11 @@ assert(Boolean(campaign.briefMarkdown), "Expected a recovery brief.");
 assert(Boolean(campaign.emailMarkdown), "Expected an email draft.");
 assert(campaign.actions.some((action) => action.type === "email_draft" && action.state === "approval_required"), "Expected approval-gated email draft action.");
 assert(campaign.events.some((event) => event.type === "clickhouse_write_processed"), "Expected ClickHouse write event.");
+assert(Boolean(advancedCampaign), "Expected campaign workflow advance to return a campaign.");
+assert(advancedCampaign?.actions.length === campaign.actions.length + 1, "Expected workflow advance to append one action.");
+assert(advancedCampaign?.events.length === campaign.events.length + 1, "Expected workflow advance to append one event.");
+assert(advancedCampaign?.workflow[0]?.state === "completed", "Expected Day 0 workflow step to be completed after advance.");
+assert(advancedCampaign?.actions.at(-1)?.type === "workflow_advance", "Expected final action to be workflow_advance.");
 
 await Promise.all(
   [
@@ -62,6 +70,11 @@ if (envStatus.prometheux) {
 if (envStatus.clickhouse) {
   assert(integrations.clickhouse === "completed", "ClickHouse is configured but did not complete.");
   assert(clickhouseStatus?.detail === expectedClickHouseDetail, "ClickHouse final ledger detail did not match the campaign shape.");
+  assert(advancedClickHouseStatus?.state === "completed", "ClickHouse workflow advance append did not complete.");
+  assert(
+    advancedClickHouseStatus?.detail.includes("Advanced Day 0") === true,
+    "ClickHouse workflow advance detail did not reference Day 0."
+  );
 }
 
 const summary = {
@@ -71,6 +84,13 @@ const summary = {
   events: campaign.events.length,
   trace: campaign.sourceActionTrace.length,
   workflow: campaign.workflow.length,
+  advanced: advancedCampaign
+    ? {
+        actions: advancedCampaign.actions.length,
+        events: advancedCampaign.events.length,
+        completedSteps: advancedCampaign.workflow.filter((step) => step.state === "completed").length
+      }
+    : null,
   integrations,
   passed: failures.length === 0,
   failures

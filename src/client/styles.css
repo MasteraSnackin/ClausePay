@@ -237,8 +237,14 @@ input:focus {
   opacity: 0.72;
 }
 
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+}
+
 .primary-button:not(:disabled):hover,
-.secondary-button:hover {
+.secondary-button:not(:disabled):hover {
   transform: translateY(-1px);
 }
 
@@ -662,12 +668,54 @@ input:focus {
   gap: 10px;
 }
 
+.workflow-advance-button {
+  flex: 0 0 auto;
+}
+
+.workflow-progress {
+  align-items: center;
+  background: #f8faf4;
+  border: 1px solid #e0e7d8;
+  border-radius: 6px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.workflow-progress strong {
+  color: #1f6b43;
+  font-size: 1.05rem;
+}
+
+.workflow-progress span {
+  color: #607168;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .workflow-step {
   border-bottom: 1px solid #edf1ed;
   display: grid;
   gap: 10px;
   grid-template-columns: 58px minmax(0, 1fr);
   padding: 0 0 10px;
+}
+
+.workflow-step.next {
+  background: #fffdf5;
+  border: 1px solid #ecdca8;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.workflow-step.completed {
+  opacity: 0.78;
 }
 
 .workflow-step:last-child {
@@ -686,6 +734,17 @@ input:focus {
   font-weight: 900;
   justify-content: center;
   min-height: 44px;
+}
+
+.workflow-step.completed .workflow-day {
+  background: #dff3e8;
+  border-color: #8dc9a6;
+}
+
+.workflow-step.next .workflow-day {
+  background: #fff6d8;
+  border-color: #e7c15d;
+  color: #795713;
 }
 
 .trace-row {

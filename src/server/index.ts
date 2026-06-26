@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { DemoPayload, RunCampaignRequest } from "../shared/types";
 import { demoContract, demoInvoice, getDefaultPublicContextTarget } from "./data/demoData";
 import { getEnvStatus } from "./env";
+import { advanceCampaignWorkflow } from "./agent/advanceCampaignWorkflow";
 import { runRecoveryCampaign } from "./agent/runRecoveryAgent";
 import { getClickHouseLedgerStats } from "./integrations/clickhouse";
 import { listCampaigns, readCampaign } from "./storage/localStore";
@@ -93,6 +94,18 @@ app.post("/api/recovery/run", async (req, res, next) => {
 app.get("/api/campaigns", async (_req, res, next) => {
   try {
     res.json(await listCampaigns());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/campaigns/:id/advance", async (req, res, next) => {
+  try {
+    const campaign = await advanceCampaignWorkflow(req.params.id);
+    if (!campaign) {
+      throw new NotFoundError("Campaign not found.", { id: req.params.id });
+    }
+    res.json(campaign);
   } catch (error) {
     next(error);
   }

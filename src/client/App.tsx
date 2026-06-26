@@ -68,6 +68,7 @@ export function App() {
   const [researchDomain, setResearchDomain] = useState("");
   const [readiness, setReadiness] = useState<ReadinessPayload | null>(null);
   const [approvedCampaignIds, setApprovedCampaignIds] = useState<Set<string>>(() => new Set());
+  const [advancingCampaignId, setAdvancingCampaignId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadInitialData();
@@ -116,6 +117,27 @@ export function App() {
   async function refreshReadiness() {
     const response = await fetch("/api/readiness");
     setReadiness((await response.json()) as ReadinessPayload);
+  }
+
+  async function advanceCampaign(campaignId: string) {
+    setAdvancingCampaignId(campaignId);
+    setError(null);
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/advance`, {
+        method: "POST"
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const campaign = (await response.json()) as CampaignRun;
+      setActiveCampaign(campaign);
+      setCampaigns((current) => current.map((item) => (item.id === campaign.id ? campaign : item)));
+      await refreshReadiness();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Campaign advance failed");
+    } finally {
+      setAdvancingCampaignId(null);
+    }
   }
 
   function markApproved(campaignId: string) {
@@ -296,7 +318,11 @@ export function App() {
 
               <section className="content-grid">
                 <ActionReceiptsPanel campaign={activeCampaign} clickHouseStats={readiness?.clickhouse} />
-                <WorkflowPanel workflow={activeCampaign.workflow || []} />
+                <WorkflowPanel
+                  campaign={activeCampaign}
+                  isAdvancing={advancingCampaignId === activeCampaign.id}
+                  onAdvance={advanceCampaign}
+                />
               </section>
 
               <section className="content-grid">
@@ -514,17 +540,55 @@ function ActionReceiptsPanel({
   );
 }
 
-function WorkflowPanel({ workflow }: { workflow: CampaignWorkflowStep[] }) {
+function WorkflowPanel({
+  campaign,
+  isAdvancing,
+  onAdvance
+}: {
+  campaign: CampaignRun;
+  isAdvancing: boolean;
+  onAdvance: (campaignId: string) => Promise<void>;
+}) {
+  const workflow = campaign.workflow || [];
+  const nextStep = workflow.find((step) => step.state !== "completed" && step.state !== "blocked");
+  const completedSteps = workflow.filter((step) => step.state === "completed").length;
+
   return (
     <div className="panel">
-      <div className="panel-heading">
-        <CalendarDays size={18} />
-        <h2>30-day autonomous workflow</h2>
+      <div className="panel-heading split">
+        <div className="heading-row">
+          <CalendarDays size={18} />
+          <h2>30-day autonomous workflow</h2>
+        </div>
+        <button
+          className="secondary-button workflow-advance-button"
+          disabled={!nextStep || isAdvancing}
+          onClick={() => onAdvance(campaign.id)}
+          type="button"
+        >
+          {isAdvancing ? <Clock3 size={16} className="spin" /> : <Play size={16} />}
+          {nextStep ? "Advance campaign day" : "Workflow complete"}
+        </button>
+      </div>
+      <div className="workflow-progress">
+        <strong>
+          {completedSteps}/{workflow.length}
+        </strong>
+        <span>{nextStep ? `Next: Day ${nextStep.day} · ${nextStep.label}` : "All campaign steps complete"}</span>
       </div>
       <div className="workflow-list">
         {workflow.length === 0 && <span className="muted">Run a new campaign to generate the 30-day autonomous workflow.</span>}
         {workflow.map((step) => (
-          <div className="workflow-step" key={step.id}>
+          <div
+            className={
+              step.id === nextStep?.id
+                ? "workflow-step next"
+                : step.state === "completed"
+                  ? "workflow-step completed"
+                  : "workflow-step"
+            }
+            key={step.id}
+          >
             <div className="workflow-day">Day {step.day}</div>
             <div>
               <strong>{step.label}</strong>
@@ -774,6 +838,13 @@ function buildReceiptFields(
         { label: "Next scheduled", value: campaign.workflow.find((step) => step.state === "scheduled")?.label || "None" },
         { label: "Monitoring", value: "Payment, reply, dispute and ledger events" }
       ];
+    case "workflow_advance":
+      return [
+        { label: "Day", value: `Day ${numberPayload(action, "day") ?? "unknown"}` },
+        { label: "Channel", value: stringPayload(action, "channel") || "system" },
+        { label: "Due date", value: stringPayload(action, "dueDate") || "not recorded" },
+        { label: "Ledger", value: "Appended event, action and workflow step" }
+      ];
     case "slack_notification":
       return [
         { label: "Provider", value: `Slack · ${formatState(integration?.state || action.state)}` },
@@ -818,6 +889,16 @@ function countLines(value: string): number {
 
 function formatState(state: string): string {
   return state.replace(/_/g, " ");
+}
+
+function stringPayload(action: RecoveryAction, key: string): string | undefined {
+  const value = action.payload[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberPayload(action: RecoveryAction, key: string): number | undefined {
+  const value = action.payload[key];
+  return typeof value === "number" ? value : undefined;
 }
 
 function truncateMiddle(value: string, maxLength: number): string {

@@ -120,6 +120,7 @@ export interface RecoveryAction {
     | "slack_notification"
     | "email_draft"
     | "follow_up_schedule"
+    | "workflow_advance"
     | "clickhouse_write";
   label: string;
   state: "completed" | "approval_required" | "scheduled" | "simulated" | "skipped" | "failed";

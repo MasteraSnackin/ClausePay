@@ -1,5 +1,5 @@
 import { createClient } from "@clickhouse/client";
-import type { AgentEvent, CampaignRun, ClickHouseLedgerStats, RecoveryAction } from "../../shared/types";
+import type { AgentEvent, CampaignRun, CampaignWorkflowStep, ClickHouseLedgerStats, RecoveryAction } from "../../shared/types";
 
 export async function writeCampaignToClickHouse(
   campaign: CampaignRun
@@ -19,97 +19,7 @@ export async function writeCampaignToClickHouse(
   });
 
   try {
-    await client.command({ query: `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(database)}` });
-    await client.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.agent_events (
-          event_id String,
-          campaign_id String,
-          invoice_id String,
-          occurred_at DateTime64(3),
-          event_type LowCardinality(String),
-          sponsor_tool LowCardinality(String),
-          summary String,
-          payload_json String
-        )
-        ENGINE = MergeTree
-        ORDER BY (campaign_id, occurred_at, event_id)
-      `
-    });
-    await client.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.evidence_sources (
-          evidence_id String,
-          campaign_id String,
-          invoice_id String,
-          retrieved_at DateTime64(3),
-          title String,
-          url String,
-          source LowCardinality(String),
-          confidence Float32,
-          snippet String,
-          payload_json String
-        )
-        ENGINE = MergeTree
-        ORDER BY (campaign_id, retrieved_at, evidence_id)
-      `
-    });
-    await client.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.agent_actions (
-          action_id String,
-          campaign_id String,
-          invoice_id String,
-          created_at DateTime64(3),
-          action_type LowCardinality(String),
-          state LowCardinality(String),
-          sponsor_tool LowCardinality(String),
-          label String,
-          detail String,
-          payload_json String
-        )
-        ENGINE = MergeTree
-        ORDER BY (campaign_id, created_at, action_id)
-      `
-    });
-    await client.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.source_action_trace (
-          trace_id String,
-          campaign_id String,
-          invoice_id String,
-          source_type LowCardinality(String),
-          source_label String,
-          action_type LowCardinality(String),
-          claim String,
-          action String,
-          confidence Float32,
-          payload_json String
-        )
-        ENGINE = MergeTree
-        ORDER BY (campaign_id, trace_id)
-      `
-    });
-    await client.command({
-      query: `
-        CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.workflow_steps (
-          step_id String,
-          campaign_id String,
-          invoice_id String,
-          day UInt8,
-          due_date Date,
-          label String,
-          state LowCardinality(String),
-          channel LowCardinality(String),
-          sponsor_tool LowCardinality(String),
-          trigger String,
-          evidence Array(String),
-          payload_json String
-        )
-        ENGINE = MergeTree
-        ORDER BY (campaign_id, day, step_id)
-      `
-    });
+    await ensureClickHouseSchema(client, database);
 
     await client.insert({
       table: `${quoteIdentifier(database)}.agent_events`,
@@ -228,6 +138,8 @@ export async function appendClickHouseOutcome(
   });
 
   try {
+    await ensureClickHouseSchema(client, database);
+
     await client.insert({
       table: `${quoteIdentifier(database)}.agent_events`,
       values: [
@@ -272,6 +184,99 @@ export async function appendClickHouseOutcome(
     return {
       state: "failed",
       detail: error instanceof Error ? error.message : "ClickHouse outcome append failed."
+    };
+  } finally {
+    await client.close();
+  }
+}
+
+export async function appendWorkflowAdvanceToClickHouse(
+  campaign: CampaignRun,
+  event: AgentEvent,
+  action: RecoveryAction,
+  step: CampaignWorkflowStep
+): Promise<{ state: "completed" | "simulated" | "failed"; detail: string }> {
+  if (!process.env.CLICKHOUSE_URL) {
+    return {
+      state: "simulated",
+      detail: `CLICKHOUSE_URL is missing; Day ${step.day} advancement was persisted locally only.`
+    };
+  }
+
+  const database = process.env.CLICKHOUSE_DATABASE || "recover_ai";
+  const client = createClient({
+    url: process.env.CLICKHOUSE_URL,
+    username: process.env.CLICKHOUSE_USERNAME || "default",
+    password: process.env.CLICKHOUSE_PASSWORD || undefined
+  });
+
+  try {
+    await ensureClickHouseSchema(client, database);
+    await client.insert({
+      table: `${quoteIdentifier(database)}.agent_events`,
+      values: [
+        {
+          event_id: event.id,
+          campaign_id: campaign.id,
+          invoice_id: campaign.invoice.id,
+          occurred_at: event.occurredAt,
+          event_type: event.type,
+          sponsor_tool: event.sponsorTool,
+          summary: event.summary,
+          payload_json: JSON.stringify(event.payload)
+        }
+      ],
+      format: "JSONEachRow"
+    });
+
+    await client.insert({
+      table: `${quoteIdentifier(database)}.agent_actions`,
+      values: [
+        {
+          action_id: action.id,
+          campaign_id: campaign.id,
+          invoice_id: campaign.invoice.id,
+          created_at: action.createdAt,
+          action_type: action.type,
+          state: action.state,
+          sponsor_tool: action.sponsorTool,
+          label: action.label,
+          detail: action.detail,
+          payload_json: JSON.stringify(action.payload)
+        }
+      ],
+      format: "JSONEachRow"
+    });
+
+    await client.insert({
+      table: `${quoteIdentifier(database)}.workflow_steps`,
+      values: [
+        {
+          step_id: step.id,
+          campaign_id: campaign.id,
+          invoice_id: campaign.invoice.id,
+          day: step.day,
+          due_date: step.dueDate,
+          label: step.label,
+          state: step.state,
+          channel: step.channel,
+          sponsor_tool: step.sponsorTool,
+          trigger: step.trigger,
+          evidence: step.evidence,
+          payload_json: JSON.stringify(step)
+        }
+      ],
+      format: "JSONEachRow"
+    });
+
+    return {
+      state: "completed",
+      detail: `Advanced Day ${step.day} and appended 1 event, 1 action, and 1 workflow step to ClickHouse.`
+    };
+  } catch (error) {
+    return {
+      state: "failed",
+      detail: error instanceof Error ? error.message : "ClickHouse workflow advance append failed."
     };
   } finally {
     await client.close();
@@ -351,6 +356,100 @@ export async function getClickHouseLedgerStats(): Promise<ClickHouseLedgerStats>
   } finally {
     await client.close();
   }
+}
+
+async function ensureClickHouseSchema(client: ReturnType<typeof createClient>, database: string): Promise<void> {
+  await client.command({ query: `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(database)}` });
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.agent_events (
+        event_id String,
+        campaign_id String,
+        invoice_id String,
+        occurred_at DateTime64(3),
+        event_type LowCardinality(String),
+        sponsor_tool LowCardinality(String),
+        summary String,
+        payload_json String
+      )
+      ENGINE = MergeTree
+      ORDER BY (campaign_id, occurred_at, event_id)
+    `
+  });
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.evidence_sources (
+        evidence_id String,
+        campaign_id String,
+        invoice_id String,
+        retrieved_at DateTime64(3),
+        title String,
+        url String,
+        source LowCardinality(String),
+        confidence Float32,
+        snippet String,
+        payload_json String
+      )
+      ENGINE = MergeTree
+      ORDER BY (campaign_id, retrieved_at, evidence_id)
+    `
+  });
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.agent_actions (
+        action_id String,
+        campaign_id String,
+        invoice_id String,
+        created_at DateTime64(3),
+        action_type LowCardinality(String),
+        state LowCardinality(String),
+        sponsor_tool LowCardinality(String),
+        label String,
+        detail String,
+        payload_json String
+      )
+      ENGINE = MergeTree
+      ORDER BY (campaign_id, created_at, action_id)
+    `
+  });
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.source_action_trace (
+        trace_id String,
+        campaign_id String,
+        invoice_id String,
+        source_type LowCardinality(String),
+        source_label String,
+        action_type LowCardinality(String),
+        claim String,
+        action String,
+        confidence Float32,
+        payload_json String
+      )
+      ENGINE = MergeTree
+      ORDER BY (campaign_id, trace_id)
+    `
+  });
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${quoteIdentifier(database)}.workflow_steps (
+        step_id String,
+        campaign_id String,
+        invoice_id String,
+        day UInt8,
+        due_date Date,
+        label String,
+        state LowCardinality(String),
+        channel LowCardinality(String),
+        sponsor_tool LowCardinality(String),
+        trigger String,
+        evidence Array(String),
+        payload_json String
+      )
+      ENGINE = MergeTree
+      ORDER BY (campaign_id, day, step_id)
+    `
+  });
 }
 
 function quoteIdentifier(value: string): string {

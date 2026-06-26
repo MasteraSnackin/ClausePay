@@ -32,7 +32,7 @@ The demo invoice, contract and debtor are synthetic. Public web research is used
 - Judge-facing dashboard for running and reviewing recovery campaigns.
 - CLI workflow for generating logs and artefacts.
 - Source-to-action trace linking invoice facts, contract clauses, web sources and agent actions.
-- 30-day autonomous recovery workflow.
+- Interactive 30-day autonomous recovery workflow with ClickHouse-backed step advancement.
 - Human approval marker for generated collection emails.
 - Stripe and Slack integration adapters with safe simulated fallback when credentials are absent.
 
@@ -182,6 +182,7 @@ Key dashboard panels:
 | `GET` | `/api/campaigns` | Lists locally generated campaigns. |
 | `GET` | `/api/campaigns/:id` | Returns one generated campaign. |
 | `POST` | `/api/recovery/run` | Runs a recovery campaign. |
+| `POST` | `/api/campaigns/:id/advance` | Advances the next 30-day workflow step and appends the event/action/step to ClickHouse. |
 
 Example run request:
 
@@ -230,7 +231,8 @@ Manual smoke test:
 2. Open `http://localhost:5173`.
 3. Click `Run recovery agent`.
 4. Confirm Tavily, Prometheux and ClickHouse show completed states.
-5. Confirm the ClickHouse proof panel increments row counts.
+5. Click `Advance campaign day`.
+6. Confirm action receipts add a workflow advancement and ClickHouse proof increments row counts.
 
 ## Roadmap
 
