@@ -136,6 +136,14 @@ Never commit `.env`. It is ignored by Git.
 
 ## Screenshots or Demo
 
+### Animated Demo GIFs
+
+![ClausePay agent run animation showing contract extraction, Tavily research, Prometheux ontology, ClickHouse ledger writes and approval output](docs/assets/devpost-gallery/08-agent-run.gif)
+
+![ClausePay source-to-action trace animation showing live sources, trace links and action receipts](docs/assets/devpost-gallery/09-source-to-action-trace.gif)
+
+![ClausePay 30-day workflow animation showing autonomous campaign advancement and ClickHouse ledger rows](docs/assets/devpost-gallery/10-30-day-workflow.gif)
+
 ### Dashboard Overview
 
 ![ClausePay dashboard showing recovery metrics, agent timeline, integration status and ClickHouse proof](docs/assets/clausepay-dashboard.jpg)
