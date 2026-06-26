@@ -2,6 +2,8 @@
 
 Source-grounded contract-to-cash agent for autonomous B2B unpaid invoice recovery.
 
+![ClausePay gallery banner](docs/assets/clausepay-gallery-banner.png)
+
 ## Description
 
 ClausePay turns an overdue invoice into a traceable recovery campaign. It reads a synthetic invoice and contract, extracts collection-relevant clauses, researches a real public company/domain with Tavily, evaluates the recovery ontology with Prometheux, writes every source and action to ClickHouse, and presents the result in a dashboard with human approval before any outbound email.
