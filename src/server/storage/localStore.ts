@@ -3,7 +3,7 @@ import path from "node:path";
 import type { CampaignRun } from "../../shared/types";
 
 export function getCampaignOutputDir(campaignId: string): string {
-  return path.join(process.cwd(), "generated", "campaigns", campaignId);
+  return path.join(getCampaignsRoot(), campaignId);
 }
 
 export async function persistCampaign(campaign: CampaignRun): Promise<void> {
@@ -38,7 +38,7 @@ export async function persistCampaign(campaign: CampaignRun): Promise<void> {
 }
 
 export async function listCampaigns(): Promise<CampaignRun[]> {
-  const root = path.join(process.cwd(), "generated", "campaigns");
+  const root = getCampaignsRoot();
   try {
     const entries = await fs.readdir(root, { withFileTypes: true });
     const campaigns = await Promise.all(
@@ -55,6 +55,14 @@ export async function listCampaigns(): Promise<CampaignRun[]> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
+}
+
+function getCampaignsRoot(): string {
+  if (process.env.VERCEL) {
+    return path.join("/tmp", "clausepay", "generated", "campaigns");
+  }
+
+  return path.join(process.cwd(), "generated", "campaigns");
 }
 
 export async function readCampaign(campaignId: string): Promise<CampaignRun | null> {

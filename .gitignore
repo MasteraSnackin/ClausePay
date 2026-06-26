@@ -4,3 +4,7 @@ dist/
 .DS_Store
 generated/campaigns/
 *.log
+.vercel
+.env*
+api/index.js
+api/index.js.map

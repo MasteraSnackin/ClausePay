@@ -80,6 +80,12 @@ npm run dev
 
 Open `http://localhost:5173`.
 
+Hosted demo:
+
+```text
+https://clausepay.vercel.app
+```
+
 ## Usage
 
 Run the dashboard:
@@ -158,6 +164,12 @@ Local dashboard:
 
 ```text
 http://localhost:5173
+```
+
+Hosted dashboard:
+
+```text
+https://clausepay.vercel.app
 ```
 
 Key dashboard panels:
