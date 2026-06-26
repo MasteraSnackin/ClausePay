@@ -1,5 +1,5 @@
 import { createClient } from "@clickhouse/client";
-import type { CampaignRun, ClickHouseLedgerStats } from "../../shared/types";
+import type { AgentEvent, CampaignRun, ClickHouseLedgerStats, RecoveryAction } from "../../shared/types";
 
 export async function writeCampaignToClickHouse(
   campaign: CampaignRun
@@ -11,14 +11,14 @@ export async function writeCampaignToClickHouse(
     };
   }
 
-  try {
-    const database = process.env.CLICKHOUSE_DATABASE || "recover_ai";
-    const client = createClient({
-      url: process.env.CLICKHOUSE_URL,
-      username: process.env.CLICKHOUSE_USERNAME || "default",
-      password: process.env.CLICKHOUSE_PASSWORD || undefined
-    });
+  const database = process.env.CLICKHOUSE_DATABASE || "recover_ai";
+  const client = createClient({
+    url: process.env.CLICKHOUSE_URL,
+    username: process.env.CLICKHOUSE_USERNAME || "default",
+    password: process.env.CLICKHOUSE_PASSWORD || undefined
+  });
 
+  try {
     await client.command({ query: `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(database)}` });
     await client.command({
       query: `
@@ -194,8 +194,6 @@ export async function writeCampaignToClickHouse(
       format: "JSONEachRow"
     });
 
-    await client.close();
-
     return {
       state: "completed",
       detail: `Wrote ${campaign.events.length} events, ${campaign.evidence.length} sources, ${campaign.actions.length} actions, ${campaign.sourceActionTrace.length} trace links, and ${campaign.workflow.length} workflow steps to ClickHouse.`
@@ -205,6 +203,78 @@ export async function writeCampaignToClickHouse(
       state: "failed",
       detail: error instanceof Error ? error.message : "ClickHouse write failed."
     };
+  } finally {
+    await client.close();
+  }
+}
+
+export async function appendClickHouseOutcome(
+  campaign: CampaignRun,
+  event: AgentEvent,
+  action: RecoveryAction
+): Promise<{ state: "completed" | "simulated" | "failed"; detail: string }> {
+  if (!process.env.CLICKHOUSE_URL) {
+    return {
+      state: "simulated",
+      detail: "CLICKHOUSE_URL is missing; final ClickHouse outcome was not appended."
+    };
+  }
+
+  const database = process.env.CLICKHOUSE_DATABASE || "recover_ai";
+  const client = createClient({
+    url: process.env.CLICKHOUSE_URL,
+    username: process.env.CLICKHOUSE_USERNAME || "default",
+    password: process.env.CLICKHOUSE_PASSWORD || undefined
+  });
+
+  try {
+    await client.insert({
+      table: `${quoteIdentifier(database)}.agent_events`,
+      values: [
+        {
+          event_id: event.id,
+          campaign_id: campaign.id,
+          invoice_id: campaign.invoice.id,
+          occurred_at: event.occurredAt,
+          event_type: event.type,
+          sponsor_tool: event.sponsorTool,
+          summary: event.summary,
+          payload_json: JSON.stringify(event.payload)
+        }
+      ],
+      format: "JSONEachRow"
+    });
+
+    await client.insert({
+      table: `${quoteIdentifier(database)}.agent_actions`,
+      values: [
+        {
+          action_id: action.id,
+          campaign_id: campaign.id,
+          invoice_id: campaign.invoice.id,
+          created_at: action.createdAt,
+          action_type: action.type,
+          state: action.state,
+          sponsor_tool: action.sponsorTool,
+          label: action.label,
+          detail: action.detail,
+          payload_json: JSON.stringify(action.payload)
+        }
+      ],
+      format: "JSONEachRow"
+    });
+
+    return {
+      state: "completed",
+      detail: "Final ClickHouse outcome event and action appended."
+    };
+  } catch (error) {
+    return {
+      state: "failed",
+      detail: error instanceof Error ? error.message : "ClickHouse outcome append failed."
+    };
+  } finally {
+    await client.close();
   }
 }
 

@@ -1,0 +1,29 @@
+# Error Handling Summary
+
+- Scope: Express API routes, request parsing, campaign request validation, dashboard error display and provider failure reporting.
+- Main failure modes: malformed JSON, invalid campaign fields, missing campaign ID, external provider failures, missing credentials and unexpected server errors.
+- Current gaps: Stripe and Slack are still simulated without credentials; there is no committed browser-level automated error-state test yet; provider retries/backoff are not implemented.
+- Fixes made or recommended:
+  - Added typed `AppError`, `ValidationError` and `NotFoundError`.
+  - Added stable JSON API error responses with `code`, `message`, optional `details` and `requestId`.
+  - Added `X-Request-Id` response headers.
+  - Moved request ID creation before JSON body parsing so parser failures still receive a request ID.
+  - Converted malformed JSON parser failures into `400 BAD_REQUEST` instead of `500 INTERNAL_ERROR`.
+  - Converted oversized JSON parser failures into `413 PAYLOAD_TOO_LARGE`.
+  - Added request validation for `POST /api/recovery/run`.
+  - Normalised empty optional company/domain fields to fallback defaults instead of treating them as invalid.
+  - Updated dashboard error parsing to show safe user-facing messages.
+  - Provider integrations report `completed`, `simulated` or `failed` states.
+  - Tavily, Prometheux and Slack provider calls use explicit timeouts.
+- Verification:
+  - `npm test` passed.
+  - `npm run test:smoke` passed with Tavily, Prometheux and ClickHouse completed.
+  - Malformed JSON request returned `400 BAD_REQUEST` with request ID `req_4c0962e5`.
+  - Invalid domain request returned `400 VALIDATION_ERROR` with request ID `req_ba7e1df0`.
+  - Missing campaign request returned `404 NOT_FOUND` with request ID `req_e32d58f5`.
+  - Empty optional company/domain fields ran successfully using the default ClickHouse public-context target.
+- Residual risks:
+  - No authentication or authorisation layer.
+  - No retry/backoff wrapper around provider calls.
+  - No circuit breaker for repeated provider outages.
+  - No centralised log sink beyond response request IDs, local artefacts and ClickHouse records.

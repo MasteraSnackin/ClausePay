@@ -6,6 +6,7 @@ import type {
   OntologyResult,
   PublicContextTarget
 } from "../../shared/types";
+import { fetchWithTimeout } from "./fetchWithTimeout";
 
 export async function runPrometheuxOntology(params: {
   invoice: Invoice;
@@ -31,16 +32,21 @@ export async function runPrometheuxOntology(params: {
   }
 
   try {
-    const response = await fetch(`${engineUrl.replace(/\/$/, "")}/vadalog/evaluate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(process.env.PROMETHEUX_API_TOKEN
-          ? { Authorization: `Bearer ${process.env.PROMETHEUX_API_TOKEN}` }
-          : {})
+    const response = await fetchWithTimeout(
+      `${engineUrl.replace(/\/$/, "")}/vadalog/evaluate`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.PROMETHEUX_API_TOKEN
+            ? { Authorization: `Bearer ${process.env.PROMETHEUX_API_TOKEN}` }
+            : {})
+        },
+        body: JSON.stringify({ program: programme })
       },
-      body: JSON.stringify({ program: programme })
-    });
+      30_000,
+      "Prometheux"
+    );
 
     if (!response.ok) {
       const errorText = await response.text();

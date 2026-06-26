@@ -1,5 +1,5 @@
 {
-  "name": "recover-ai-demo",
+  "name": "clausepay",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,8 @@
     "dev": "tsx src/server/index.ts",
     "agent:demo": "tsx scripts/run-agent.ts",
     "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run build",
+    "test:smoke": "tsx scripts/smoke-test.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "NODE_ENV=production tsx src/server/index.ts"
   },

@@ -1,10 +1,11 @@
 import type { CampaignRun } from "../../shared/types";
+import { fetchWithTimeout } from "./fetchWithTimeout";
 
 export async function postSlackNotification(
   campaign: CampaignRun
 ): Promise<{ state: "completed" | "simulated" | "failed"; message: string; detail: string }> {
   const message = [
-    `Recover AI campaign ${campaign.id} queued for approval`,
+    `ClausePay campaign ${campaign.id} queued for approval`,
     `Invoice: ${campaign.invoice.id} (${formatCurrency(campaign.invoice.amount, campaign.invoice.currency)})`,
     `Days overdue: ${campaign.daysOverdue}`,
     `Draft email: approval required`,
@@ -20,11 +21,16 @@ export async function postSlackNotification(
   }
 
   try {
-    const response = await fetch(process.env.SLACK_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: message })
-    });
+    const response = await fetchWithTimeout(
+      process.env.SLACK_WEBHOOK_URL,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: message })
+      },
+      10_000,
+      "Slack"
+    );
 
     if (!response.ok) {
       throw new Error(`Slack returned ${response.status}: ${await response.text()}`);

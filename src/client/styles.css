@@ -27,6 +27,11 @@ a {
   color: inherit;
 }
 
+:focus-visible {
+  outline: 3px solid rgba(45, 122, 87, 0.36);
+  outline-offset: 3px;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 24px;
@@ -74,19 +79,33 @@ h2 {
 
 .sponsor-pill,
 .status-badge {
+  align-items: center;
   border: 1px solid #d3dcd3;
   border-radius: 999px;
   color: #617268;
   display: inline-flex;
   font-size: 0.8rem;
   font-weight: 700;
+  gap: 7px;
   padding: 6px 10px;
+}
+
+.sponsor-pill::before {
+  background: #aeb8ae;
+  border-radius: 50%;
+  content: "";
+  height: 7px;
+  width: 7px;
 }
 
 .sponsor-pill.active {
   background: #dff3e8;
   border-color: #8dc9a6;
   color: #1f6b43;
+}
+
+.sponsor-pill.active::before {
+  background: #278452;
 }
 
 .layout-grid {
@@ -137,6 +156,7 @@ h2 {
 
 .panel-heading.split {
   align-items: flex-start;
+  flex-wrap: wrap;
   justify-content: space-between;
 }
 
@@ -217,6 +237,11 @@ input:focus {
   opacity: 0.72;
 }
 
+.primary-button:not(:disabled):hover,
+.secondary-button:hover {
+  transform: translateY(-1px);
+}
+
 .secondary-button {
   align-items: center;
   background: #f6f8f5;
@@ -230,6 +255,10 @@ input:focus {
   gap: 7px;
   min-height: 34px;
   padding: 7px 10px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
 }
 
 .secondary-button.approved {
@@ -340,6 +369,21 @@ input:focus {
 .timeline-row:last-child,
 .integration-row:last-child {
   border-bottom: 0;
+}
+
+.integration-row[data-state="completed"] strong,
+.integration-row[data-state="configured"] strong {
+  color: #1f6b43;
+}
+
+.integration-row[data-state="failed"] strong {
+  color: #9d2c2c;
+}
+
+.integration-row[data-state="missing"] strong,
+.integration-row[data-state="simulated"] strong,
+.integration-row[data-state="skipped"] strong {
+  color: #59636d;
 }
 
 .timeline-row span,

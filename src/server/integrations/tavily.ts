@@ -1,4 +1,5 @@
 import type { EvidenceSource, PublicContextTarget } from "../../shared/types";
+import { fetchWithTimeout } from "./fetchWithTimeout";
 
 interface TavilyResult {
   title?: string;
@@ -32,35 +33,10 @@ export async function researchPublicContext(
   ];
 
   try {
-    const responses = await Promise.all(
-      queries.map((query) =>
-        fetch("https://api.tavily.com/search", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            ...(process.env.TAVILY_PROJECT ? { "X-Project-ID": process.env.TAVILY_PROJECT } : {}),
-            "X-Session-Id": campaignId
-          },
-          body: JSON.stringify({
-            query,
-            search_depth: "basic",
-            include_answer: true,
-            include_raw_content: false,
-            max_results: 4
-          })
-        })
-      )
-    );
-
-    const payloads = await Promise.all(
-      responses.map(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Tavily returned ${response.status}: ${await response.text()}`);
-        }
-        return (await response.json()) as TavilyResponse;
-      })
-    );
+    const payloadSettled = await Promise.allSettled(queries.map((query) => searchTavily(query, apiKey, campaignId)));
+    const payloads = payloadSettled
+      .filter((result): result is PromiseFulfilledResult<TavilyResponse> => result.status === "fulfilled")
+      .map((result) => result.value);
 
     const seen = new Set<string>();
     const evidence = payloads
@@ -84,10 +60,23 @@ export async function researchPublicContext(
         retrievedAt: new Date().toISOString()
       }));
 
+    if (evidence.length === 0) {
+      const firstFailure = payloadSettled.find(
+        (result): result is PromiseRejectedResult => result.status === "rejected"
+      );
+      throw new Error(firstFailure?.reason instanceof Error ? firstFailure.reason.message : "Tavily returned no usable sources.");
+    }
+
+    const succeededQueries = payloads.length;
+    const failedQueries = payloadSettled.length - succeededQueries;
+
     return {
       state: "completed",
       evidence,
-      detail: `Tavily returned ${evidence.length} unique sources.`
+      detail:
+        failedQueries > 0
+          ? `Tavily returned ${evidence.length} unique sources from ${succeededQueries}/${queries.length} queries.`
+          : `Tavily returned ${evidence.length} unique sources.`
     };
   } catch (error) {
     return {
@@ -96,6 +85,36 @@ export async function researchPublicContext(
       detail: error instanceof Error ? error.message : "Tavily search failed."
     };
   }
+}
+
+async function searchTavily(query: string, apiKey: string, campaignId: string): Promise<TavilyResponse> {
+  const response = await fetchWithTimeout(
+    "https://api.tavily.com/search",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        ...(process.env.TAVILY_PROJECT ? { "X-Project-ID": process.env.TAVILY_PROJECT } : {}),
+        "X-Session-Id": campaignId
+      },
+      body: JSON.stringify({
+        query,
+        search_depth: "basic",
+        include_answer: true,
+        include_raw_content: false,
+        max_results: 4
+      })
+    },
+    15_000,
+    "Tavily"
+  );
+
+  if (!response.ok) {
+    throw new Error(`Tavily returned ${response.status}: ${await response.text()}`);
+  }
+
+  return (await response.json()) as TavilyResponse;
 }
 
 function normaliseScore(score: number | undefined): number {

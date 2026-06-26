@@ -74,7 +74,7 @@ export function App() {
         body: JSON.stringify({ researchCompanyName, researchDomain })
       });
       if (!response.ok) {
-        throw new Error(await response.text());
+        throw new Error(await readApiError(response));
       }
       const campaign = (await response.json()) as CampaignRun;
       setActiveCampaign(campaign);
@@ -110,8 +110,8 @@ export function App() {
     <main className="app-shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">Recover AI</p>
-          <h1>Autonomous invoice recovery console</h1>
+          <p className="eyebrow">ClausePay</p>
+          <h1>Evidence-backed invoice recovery</h1>
         </div>
         <div className="sponsor-strip" aria-label="Sponsor integrations">
           <SponsorPill label="Tavily" active={demo?.envStatus.tavily} />
@@ -167,11 +167,15 @@ export function App() {
             <p className="context-note">
               The debt is synthetic. This target is used only for live web grounding.
             </p>
-            <button className="primary-button" type="button" onClick={runAgent} disabled={isRunning}>
+            <button className="primary-button" type="button" onClick={runAgent} disabled={isRunning} aria-busy={isRunning}>
               {isRunning ? <Clock3 size={18} className="spin" /> : <Play size={18} />}
               {isRunning ? "Running agent" : "Run recovery agent"}
             </button>
-            {error && <p className="error-text">{error}</p>}
+            {error && (
+              <p className="error-text" role="alert">
+                {error}
+              </p>
+            )}
           </section>
 
           <section className="panel">
@@ -333,8 +337,26 @@ export function App() {
   );
 }
 
+async function readApiError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { error?: { message?: string; requestId?: string } };
+    const message = payload.error?.message || `Request failed with status ${response.status}`;
+    return payload.error?.requestId ? `${message} (${payload.error.requestId})` : message;
+  } catch {
+    return `Request failed with status ${response.status}`;
+  }
+}
+
 function SponsorPill({ label, active }: { label: string; active?: boolean }) {
-  return <span className={active ? "sponsor-pill active" : "sponsor-pill"}>{label}</span>;
+  return (
+    <span
+      aria-label={`${label}: ${active ? "configured" : "missing"}`}
+      className={active ? "sponsor-pill active" : "sponsor-pill"}
+      title={`${label}: ${active ? "configured" : "missing"}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 function EmptyState() {
@@ -363,7 +385,7 @@ function StatusDot({ state }: { state: string }) {
 
 function IntegrationRow({ status }: { status: IntegrationRunStatus }) {
   return (
-    <div className="integration-row">
+    <div className="integration-row" data-state={status.state}>
       <StatusDot state={status.state} />
       <div>
         <strong>{status.name}</strong>
@@ -403,10 +425,10 @@ function WorkflowPanel({ workflow }: { workflow: CampaignWorkflowStep[] }) {
     <div className="panel">
       <div className="panel-heading">
         <CalendarDays size={18} />
-        <h2>30-day workflow</h2>
+        <h2>30-day autonomous workflow</h2>
       </div>
       <div className="workflow-list">
-        {workflow.length === 0 && <span className="muted">Run a new campaign to generate the 30-day workflow.</span>}
+        {workflow.length === 0 && <span className="muted">Run a new campaign to generate the 30-day autonomous workflow.</span>}
         {workflow.map((step) => (
           <div className="workflow-step" key={step.id}>
             <div className="workflow-day">Day {step.day}</div>

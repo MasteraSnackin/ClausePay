@@ -16,7 +16,7 @@ import { createInvoicePaymentLink } from "../integrations/stripe";
 import { postSlackNotification } from "../integrations/slack";
 import { researchPublicContext } from "../integrations/tavily";
 import { runPrometheuxOntology } from "../integrations/prometheux";
-import { writeCampaignToClickHouse } from "../integrations/clickhouse";
+import { appendClickHouseOutcome, writeCampaignToClickHouse } from "../integrations/clickhouse";
 import { getCampaignOutputDir, persistCampaign } from "../storage/localStore";
 
 export async function runRecoveryCampaign(request: RunCampaignRequest = {}): Promise<CampaignRun> {
@@ -27,14 +27,16 @@ export async function runRecoveryCampaign(request: RunCampaignRequest = {}): Pro
   const events: AgentEvent[] = [];
 
   const logEvent = (type: string, sponsorTool: AgentEvent["sponsorTool"], summary: string, payload = {}) => {
-    events.push({
+    const event: AgentEvent = {
       id: `evt_${events.length + 1}_${crypto.randomUUID().slice(0, 6)}`,
       occurredAt: new Date().toISOString(),
       type,
       sponsorTool,
       summary,
       payload
-    });
+    };
+    events.push(event);
+    return event;
   };
 
   logEvent("campaign_started", "local", `Started recovery campaign for ${demoInvoice.id}`, {
@@ -175,12 +177,12 @@ export async function runRecoveryCampaign(request: RunCampaignRequest = {}): Pro
     })
   };
 
-  const clickhouse = await writeCampaignToClickHouse(campaignBeforeClickHouse);
-  logEvent("clickhouse_write_processed", "clickhouse", clickhouse.detail, {
+  let clickhouse = await writeCampaignToClickHouse(campaignBeforeClickHouse);
+  const clickhouseEvent = logEvent("clickhouse_write_processed", "clickhouse", clickhouse.detail, {
     state: clickhouse.state
   });
 
-  actions.push({
+  const clickhouseAction: RecoveryAction = {
     id: `act_${actions.length + 1}`,
     type: "clickhouse_write",
     label: "Persist action ledger",
@@ -192,7 +194,32 @@ export async function runRecoveryCampaign(request: RunCampaignRequest = {}): Pro
     payload: {
       tables: ["agent_events", "evidence_sources", "agent_actions"]
     }
-  });
+  };
+  actions.push(clickhouseAction);
+
+  if (clickhouse.state === "completed") {
+    const finalClickHouseDetail = buildClickHouseDetail({
+      eventCount: events.length,
+      sourceCount: campaignBeforeClickHouse.evidence.length,
+      actionCount: actions.length,
+      traceCount: campaignBeforeClickHouse.sourceActionTrace.length,
+      workflowCount: campaignBeforeClickHouse.workflow.length
+    });
+    clickhouse.detail = finalClickHouseDetail;
+    clickhouseEvent.summary = finalClickHouseDetail;
+    clickhouseEvent.payload = { state: clickhouse.state, finalLedgerAppend: true };
+    clickhouseAction.detail = finalClickHouseDetail;
+
+    const appendOutcome = await appendClickHouseOutcome(campaignBeforeClickHouse, clickhouseEvent, clickhouseAction);
+    if (appendOutcome.state !== "completed") {
+      clickhouse = {
+        state: "completed",
+        detail: `${finalClickHouseDetail} Final outcome append warning: ${appendOutcome.detail}`
+      };
+      clickhouseEvent.summary = clickhouse.detail;
+      clickhouseAction.detail = clickhouse.detail;
+    }
+  }
 
   const campaign: CampaignRun = {
     ...campaignBeforeClickHouse,
@@ -213,6 +240,16 @@ export async function runRecoveryCampaign(request: RunCampaignRequest = {}): Pro
 
   await persistCampaign(campaign);
   return campaign;
+}
+
+function buildClickHouseDetail(params: {
+  eventCount: number;
+  sourceCount: number;
+  actionCount: number;
+  traceCount: number;
+  workflowCount: number;
+}): string {
+  return `Wrote ${params.eventCount} events, ${params.sourceCount} sources, ${params.actionCount} actions, ${params.traceCount} trace links, and ${params.workflowCount} workflow steps to ClickHouse.`;
 }
 
 function resolvePublicContextTarget(request: RunCampaignRequest): PublicContextTarget {
@@ -505,7 +542,10 @@ function buildIntegrationStatus(params: {
     {
       name: "prometheux",
       state: params.prometheux as IntegrationRunStatus["state"],
-      detail: params.prometheuxDetail || "Ontology processing"
+      detail:
+        params.prometheux === "completed"
+          ? "Ontology reasoning completed"
+          : params.prometheuxDetail || "Ontology processing"
     },
     {
       name: "stripe",
