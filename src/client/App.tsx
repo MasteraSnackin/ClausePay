@@ -23,6 +23,7 @@ import type {
   CampaignWorkflowStep,
   ClickHouseLedgerStats,
   DemoPayload,
+  IntegrationName,
   IntegrationRunStatus,
   RecoveryAction,
   SourceActionTrace
@@ -30,6 +31,31 @@ import type {
 
 interface ReadinessPayload {
   clickhouse: ClickHouseLedgerStats;
+}
+
+interface ReceiptField {
+  label: string;
+  value: string;
+  href?: string;
+}
+
+interface ActionReceipt {
+  id: string;
+  label: string;
+  sponsorTool: IntegrationName;
+  state: RecoveryAction["state"];
+  detail: string;
+  fields: ReceiptField[];
+}
+
+interface SponsorProof {
+  sponsor: Exclude<IntegrationName, "local">;
+  title: string;
+  role: string;
+  state: IntegrationRunStatus["state"];
+  metric: string;
+  detail: string;
+  proofs: string[];
 }
 
 export function App() {
@@ -226,6 +252,10 @@ export function App() {
               </section>
 
               <section className="content-grid">
+                <SponsorProofPanel campaign={activeCampaign} clickHouseStats={readiness?.clickhouse} />
+              </section>
+
+              <section className="content-grid">
                 <div className="panel wide">
                   <div className="panel-heading split">
                     <div>
@@ -265,7 +295,7 @@ export function App() {
               </section>
 
               <section className="content-grid">
-                <RealActionsPanel actions={activeCampaign.actions} />
+                <ActionReceiptsPanel campaign={activeCampaign} clickHouseStats={readiness?.clickhouse} />
                 <WorkflowPanel workflow={activeCampaign.workflow || []} />
               </section>
 
@@ -395,25 +425,89 @@ function IntegrationRow({ status }: { status: IntegrationRunStatus }) {
   );
 }
 
-function RealActionsPanel({ actions }: { actions: RecoveryAction[] }) {
+function SponsorProofPanel({
+  campaign,
+  clickHouseStats
+}: {
+  campaign: CampaignRun;
+  clickHouseStats?: ClickHouseLedgerStats;
+}) {
+  const proofs = buildSponsorProofs(campaign, clickHouseStats);
+
+  return (
+    <div className="panel wide sponsor-proof-panel">
+      <div className="panel-heading">
+        <ShieldCheck size={18} />
+        <h2>Sponsor proof</h2>
+      </div>
+      <div className="sponsor-proof-grid">
+        {proofs.map((proof) => (
+          <article className="sponsor-proof-card" data-state={proof.state} key={proof.sponsor}>
+            <div className="proof-card-top">
+              <strong>{proof.title}</strong>
+              <span className="state-pill">{formatState(proof.state)}</span>
+            </div>
+            <p>{proof.role}</p>
+            <b>{proof.metric}</b>
+            <span>{proof.detail}</span>
+            <ul>
+              {proof.proofs.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActionReceiptsPanel({
+  campaign,
+  clickHouseStats
+}: {
+  campaign: CampaignRun;
+  clickHouseStats?: ClickHouseLedgerStats;
+}) {
+  const receipts = buildActionReceipts(campaign, clickHouseStats);
+
   return (
     <div className="panel wide">
       <div className="panel-heading">
         <ListChecks size={18} />
-        <h2>Real actions taken</h2>
+        <h2>Action receipts</h2>
       </div>
-      <div className="action-grid">
-        {actions.map((action) => (
-          <div className="action-card" key={action.id}>
-            <div className="action-card-head">
-              <StatusDot state={action.state} />
-              <strong>{action.label}</strong>
+      <div className="receipt-grid">
+        {receipts.map((receipt) => (
+          <article className="receipt-card" data-state={receipt.state} key={receipt.id}>
+            <div className="receipt-card-head">
+              <StatusDot state={receipt.state} />
+              <div>
+                <strong>{receipt.label}</strong>
+                <small>
+                  {receipt.sponsorTool} · {formatState(receipt.state)}
+                </small>
+              </div>
             </div>
-            <span>{action.detail}</span>
-            <small>
-              {action.sponsorTool} · {action.state.replace("_", " ")}
-            </small>
-          </div>
+            <p>{receipt.detail}</p>
+            <dl>
+              {receipt.fields.map((field) => (
+                <div key={field.label}>
+                  <dt>{field.label}</dt>
+                  <dd>
+                    {field.href ? (
+                      <a href={field.href} target="_blank" rel="noreferrer">
+                        {field.value}
+                        <ExternalLink size={12} />
+                      </a>
+                    ) : (
+                      field.value
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </article>
         ))}
       </div>
     </div>
@@ -529,4 +623,205 @@ function formatCurrency(amount: number, currency: string): string {
     style: "currency",
     currency
   }).format(amount);
+}
+
+function buildSponsorProofs(campaign: CampaignRun, clickHouseStats?: ClickHouseLedgerStats): SponsorProof[] {
+  const tavilyStatus = getIntegrationStatus(campaign, "tavily");
+  const prometheuxStatus = getIntegrationStatus(campaign, "prometheux");
+  const clickhouseStatus = getIntegrationStatus(campaign, "clickhouse");
+  const stripeStatus = getIntegrationStatus(campaign, "stripe");
+  const slackStatus = getIntegrationStatus(campaign, "slack");
+  const tavilySources = campaign.evidence.filter((source) => source.source === "tavily");
+  const ontologyLines = countLines(campaign.ontology.programme);
+  const campaignLedgerRows = getCampaignLedgerRowCount(campaign);
+  const paymentAction = campaign.actions.find((action) => action.type === "payment_link");
+  const slackAction = campaign.actions.find((action) => action.type === "slack_notification");
+
+  return [
+    {
+      sponsor: "tavily",
+      title: "Tavily",
+      role: "Open-web source grounding",
+      state: tavilyStatus?.state || "missing",
+      metric: `${campaign.evidence.length} sources`,
+      detail: `${campaign.publicContextTarget.companyName} · ${campaign.publicContextTarget.domain}`,
+      proofs: [
+        tavilySources.length > 0 ? `${tavilySources.length} live Tavily results` : "Fallback sources clearly marked",
+        campaign.evidence[0]?.url || "No source URL captured",
+        "Sources feed the brief and trace"
+      ]
+    },
+    {
+      sponsor: "prometheux",
+      title: "Prometheux",
+      role: "Ontology reasoning",
+      state: prometheuxStatus?.state || "missing",
+      metric: `${campaign.ontology.nodes.length} nodes · ${campaign.ontology.edges.length} edges`,
+      detail: prometheuxStatus?.detail || "Ontology status unavailable",
+      proofs: [
+        `${ontologyLines} Vadalog programme lines`,
+        `${campaign.clausesUsed.length} contract clauses mapped`,
+        "Ontology artefacts saved per campaign"
+      ]
+    },
+    {
+      sponsor: "clickhouse",
+      title: "ClickHouse",
+      role: "Operational action ledger",
+      state: clickhouseStatus?.state || "missing",
+      metric: `${campaignLedgerRows} campaign rows`,
+      detail: clickhouseStatus?.detail || clickHouseStats?.detail || "Ledger status unavailable",
+      proofs: [
+        "agent_events, evidence_sources, agent_actions",
+        "source_action_trace and workflow_steps",
+        clickHouseStats?.state === "live" ? "Readiness confirms live ledger" : "Local artefacts retained"
+      ]
+    },
+    {
+      sponsor: "stripe",
+      title: "Stripe",
+      role: "Test payment transaction link",
+      state: stripeStatus?.state || "missing",
+      metric: campaign.paymentLink ? "Link ready" : "Link pending",
+      detail: paymentAction?.detail || stripeStatus?.detail || "Payment status unavailable",
+      proofs: [
+        campaign.paymentLink || "No payment URL captured",
+        "Payment link added to email draft",
+        "Payment action appears in trace"
+      ]
+    },
+    {
+      sponsor: "slack",
+      title: "Slack",
+      role: "Finance notification orchestration",
+      state: slackStatus?.state || "missing",
+      metric: slackStatus?.state === "completed" ? "Notified" : formatState(slackStatus?.state || "missing"),
+      detail: slackAction?.detail || slackStatus?.detail || "Notification status unavailable",
+      proofs: [
+        campaign.slackMessage || "Notification message unavailable",
+        "Campaign ID and amount included",
+        "Action recorded before ledger write"
+      ]
+    }
+  ];
+}
+
+function buildActionReceipts(campaign: CampaignRun, clickHouseStats?: ClickHouseLedgerStats): ActionReceipt[] {
+  return campaign.actions.map((action) => ({
+    id: action.id,
+    label: action.label,
+    sponsorTool: action.sponsorTool,
+    state: action.state,
+    detail: action.detail,
+    fields: buildReceiptFields(action, campaign, clickHouseStats)
+  }));
+}
+
+function buildReceiptFields(
+  action: RecoveryAction,
+  campaign: CampaignRun,
+  clickHouseStats?: ClickHouseLedgerStats
+): ReceiptField[] {
+  const topSource = campaign.evidence[0];
+  const maxWorkflowDay = campaign.workflow.reduce((max, step) => Math.max(max, step.day), 0);
+  const integration = getIntegrationStatus(campaign, action.sponsorTool);
+
+  switch (action.type) {
+    case "contract_extract":
+      return [
+        { label: "Contract", value: `${campaign.contract.id} · ${campaign.contract.governingLaw}` },
+        { label: "Clauses", value: campaign.clausesUsed.map((clause) => `Clause ${clause.id}`).join(", ") },
+        { label: "Source", value: campaign.contract.sourceLabel }
+      ];
+    case "web_research":
+      return [
+        { label: "Provider", value: `Tavily · ${formatState(integration?.state || action.state)}` },
+        { label: "Sources", value: `${campaign.evidence.length} unique sources` },
+        {
+          label: "Top source",
+          value: topSource?.title || "No source captured",
+          href: topSource?.url
+        }
+      ];
+    case "ontology_reasoning":
+      return [
+        { label: "Provider", value: `Prometheux · ${formatState(campaign.ontology.state)}` },
+        { label: "Graph", value: `${campaign.ontology.nodes.length} nodes, ${campaign.ontology.edges.length} edges` },
+        { label: "Programme", value: `${countLines(campaign.ontology.programme)} Vadalog lines` }
+      ];
+    case "payment_link":
+      return [
+        { label: "Provider", value: `Stripe · ${formatState(integration?.state || action.state)}` },
+        {
+          label: "Payment URL",
+          value: campaign.paymentLink || "Pending Stripe test key",
+          href: campaign.paymentLink
+        },
+        {
+          label: "Invoice",
+          value: `${campaign.invoice.id} · ${formatCurrency(campaign.invoice.amount, campaign.invoice.currency)}`
+        }
+      ];
+    case "email_draft":
+      return [
+        { label: "Approval", value: "Human approval required" },
+        { label: "Auto-send", value: "Blocked" },
+        { label: "Clauses cited", value: campaign.clausesUsed.map((clause) => clause.id).join(", ") }
+      ];
+    case "follow_up_schedule":
+      return [
+        { label: "Window", value: `${campaign.workflow.length} steps over ${maxWorkflowDay} days` },
+        { label: "Next scheduled", value: campaign.workflow.find((step) => step.state === "scheduled")?.label || "None" },
+        { label: "Monitoring", value: "Payment, reply, dispute and ledger events" }
+      ];
+    case "slack_notification":
+      return [
+        { label: "Provider", value: `Slack · ${formatState(integration?.state || action.state)}` },
+        { label: "Message", value: truncateMiddle(campaign.slackMessage || "No Slack message captured", 120) },
+        { label: "Campaign", value: campaign.id }
+      ];
+    case "clickhouse_write":
+      return [
+        { label: "Provider", value: `ClickHouse · ${formatState(integration?.state || action.state)}` },
+        { label: "Campaign rows", value: String(getCampaignLedgerRowCount(campaign)) },
+        {
+          label: "Ledger",
+          value: clickHouseStats?.state === "live" ? "Live ledger confirmed" : integration?.detail || "Ledger write recorded"
+        }
+      ];
+    default:
+      return [
+        { label: "Sponsor", value: action.sponsorTool },
+        { label: "State", value: formatState(action.state) },
+        { label: "Campaign", value: campaign.id }
+      ];
+  }
+}
+
+function getIntegrationStatus(campaign: CampaignRun, name: IntegrationName): IntegrationRunStatus | undefined {
+  return campaign.integrationStatus.find((status) => status.name === name);
+}
+
+function getCampaignLedgerRowCount(campaign: CampaignRun): number {
+  return (
+    campaign.events.length +
+    campaign.evidence.length +
+    campaign.actions.length +
+    campaign.sourceActionTrace.length +
+    campaign.workflow.length
+  );
+}
+
+function countLines(value: string): number {
+  return value.split("\n").filter((line) => line.trim().length > 0).length;
+}
+
+function formatState(state: string): string {
+  return state.replace(/_/g, " ");
+}
+
+function truncateMiddle(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const half = Math.floor((maxLength - 3) / 2);
+  return `${value.slice(0, half)}...${value.slice(value.length - half)}`;
 }

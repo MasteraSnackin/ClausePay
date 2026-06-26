@@ -453,7 +453,7 @@ input:focus {
 }
 
 .source-item strong,
-.action-card strong,
+.receipt-card strong,
 .trace-row strong,
 .workflow-step strong,
 .run-item span {
@@ -488,28 +488,95 @@ input:focus {
   overflow-wrap: anywhere;
 }
 
-.action-grid {
+.sponsor-proof-grid,
+.receipt-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.action-card {
+.sponsor-proof-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.receipt-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.sponsor-proof-card,
+.receipt-card {
   border: 1px solid #e1e8e2;
   border-radius: 6px;
   display: grid;
-  gap: 7px;
-  min-height: 116px;
+  gap: 10px;
   padding: 12px;
 }
 
-.action-card-head {
+.sponsor-proof-card {
+  align-content: start;
+  min-height: 196px;
+}
+
+.sponsor-proof-card[data-state="completed"],
+.receipt-card[data-state="completed"] {
+  background: #f8fcf5;
+  border-color: #bdddc8;
+}
+
+.sponsor-proof-card[data-state="failed"],
+.receipt-card[data-state="failed"] {
+  background: #fff8f6;
+  border-color: #e3ada6;
+}
+
+.sponsor-proof-card[data-state="simulated"],
+.sponsor-proof-card[data-state="missing"],
+.receipt-card[data-state="simulated"],
+.receipt-card[data-state="missing"] {
+  background: #f8faf8;
+}
+
+.proof-card-top,
+.receipt-card-head {
   align-items: center;
   display: flex;
   gap: 8px;
+  justify-content: space-between;
 }
 
-.action-card span,
+.receipt-card-head {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.receipt-card-head > div,
+.receipt-card dl div {
+  min-width: 0;
+}
+
+.state-pill {
+  background: #f1f3ed;
+  border-radius: 999px;
+  color: #4d5d55;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 4px 8px;
+  text-transform: capitalize;
+}
+
+.sponsor-proof-card[data-state="completed"] .state-pill {
+  background: #dff3e8;
+  color: #1f6b43;
+}
+
+.sponsor-proof-card[data-state="failed"] .state-pill {
+  background: #ffe5df;
+  color: #9d2c2c;
+}
+
+.sponsor-proof-card p,
+.sponsor-proof-card span,
+.receipt-card p,
 .workflow-step span,
 .trace-row span {
   color: #607168;
@@ -518,7 +585,70 @@ input:focus {
   overflow-wrap: anywhere;
 }
 
-.action-card small,
+.sponsor-proof-card b {
+  color: #18201d;
+  font-size: 1.15rem;
+}
+
+.sponsor-proof-card ul {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sponsor-proof-card li {
+  color: #53645b;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  padding-left: 14px;
+  position: relative;
+}
+
+.sponsor-proof-card li::before {
+  background: #2d7a57;
+  border-radius: 50%;
+  content: "";
+  height: 5px;
+  left: 0;
+  position: absolute;
+  top: 7px;
+  width: 5px;
+}
+
+.receipt-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.receipt-card dt {
+  color: #66776e;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.receipt-card dd {
+  color: #18201d;
+  font-size: 0.86rem;
+  font-weight: 750;
+  line-height: 1.35;
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.receipt-card a {
+  align-items: center;
+  color: #0f5a3a;
+  display: inline-flex;
+  gap: 5px;
+  max-width: 100%;
+}
+
+.receipt-card small,
 .workflow-step small {
   color: #2d7a57;
   font-size: 0.78rem;
@@ -718,7 +848,7 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
-  .action-grid,
+  .receipt-grid,
   .trace-row {
     grid-template-columns: 1fr;
   }
