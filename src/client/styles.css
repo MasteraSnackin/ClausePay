@@ -296,15 +296,14 @@ input:focus {
 }
 
 .run-item {
+  align-items: center;
   background: #f7faf7;
   border: 1px solid #dfe6df;
   border-radius: 6px;
   color: #18201d;
-  cursor: pointer;
-  display: grid;
+  display: flex;
   gap: 3px;
   padding: 10px;
-  text-align: left;
 }
 
 .run-item.active {
@@ -312,9 +311,82 @@ input:focus {
   border-color: #8dc9a6;
 }
 
-.run-item small {
+.run-select-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.run-select-button span {
+  font-weight: 500;
+}
+
+.run-item small,
+.run-rename-form small {
   color: #66776e;
   overflow-wrap: anywhere;
+}
+
+.run-id {
+  color: #7c8a82;
+  font-size: 0.72rem;
+}
+
+.run-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.run-rename-form {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.run-rename-form input {
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.icon-button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cfd9d1;
+  border-radius: 6px;
+  color: #2d7a57;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+  width: 34px;
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.icon-button:not(:disabled):hover {
+  border-color: #8dc9a6;
+  box-shadow: 0 0 0 3px rgba(45, 122, 87, 0.12);
+}
+
+.run-edit-button {
+  opacity: 0.72;
+}
+
+.run-item:hover .run-edit-button,
+.run-edit-button:focus-visible {
+  opacity: 1;
 }
 
 .metric-grid {

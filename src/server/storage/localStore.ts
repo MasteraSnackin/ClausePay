@@ -74,3 +74,16 @@ export async function readCampaign(campaignId: string): Promise<CampaignRun | nu
     throw error;
   }
 }
+
+export async function renameCampaign(campaignId: string, label: string): Promise<CampaignRun | null> {
+  const campaign = await readCampaign(campaignId);
+  if (!campaign) return null;
+
+  const renamedCampaign: CampaignRun = {
+    ...campaign,
+    label
+  };
+
+  await persistCampaign(renamedCampaign);
+  return renamedCampaign;
+}

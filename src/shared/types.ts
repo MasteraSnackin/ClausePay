@@ -160,6 +160,7 @@ export interface IntegrationRunStatus {
 
 export interface CampaignRun {
   id: string;
+  label?: string;
   createdAt: string;
   asOfDate: string;
   invoice: Invoice;

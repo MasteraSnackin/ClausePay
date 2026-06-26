@@ -9,7 +9,7 @@ import { demoContract, demoInvoice, getDefaultPublicContextTarget } from "./data
 import { getEnvStatus } from "./env";
 import { NotFoundError, ValidationError, toErrorResponse } from "./errors";
 import { getClickHouseLedgerStats } from "./integrations/clickhouse";
-import { listCampaigns, readCampaign } from "./storage/localStore";
+import { listCampaigns, readCampaign, renameCampaign } from "./storage/localStore";
 
 const optionalTrimmedString = (maxLength: number) =>
   z.preprocess(
@@ -30,6 +30,12 @@ const runCampaignSchema = z
         .regex(/^(https?:\/\/)?[a-z0-9.-]+(:[0-9]+)?(\/.*)?$/i, "Enter a domain or URL, not arbitrary text.")
         .optional()
     )
+  })
+  .strict();
+
+const renameCampaignSchema = z
+  .object({
+    label: z.string().trim().min(1).max(80)
   })
   .strict();
 
@@ -96,6 +102,27 @@ export function createApiApp(): express.Express {
   app.post("/api/campaigns/:id/advance", async (req, res, next) => {
     try {
       const campaign = await advanceCampaignWorkflow(req.params.id);
+      if (!campaign) {
+        throw new NotFoundError("Campaign not found.", { id: req.params.id });
+      }
+      res.json(campaign);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/campaigns/:id", async (req, res, next) => {
+    try {
+      const parsed = renameCampaignSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        throw new ValidationError("The campaign label is invalid.", {
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message
+          }))
+        });
+      }
+      const campaign = await renameCampaign(req.params.id, parsed.data.label);
       if (!campaign) {
         throw new NotFoundError("Campaign not found.", { id: req.params.id });
       }

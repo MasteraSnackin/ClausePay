@@ -203,6 +203,7 @@ Key dashboard panels:
 | `GET` | `/api/readiness` | Returns ClickHouse readiness and ledger row counts. |
 | `GET` | `/api/campaigns` | Lists locally generated campaigns. |
 | `GET` | `/api/campaigns/:id` | Returns one generated campaign. |
+| `PATCH` | `/api/campaigns/:id` | Renames a generated campaign run. |
 | `POST` | `/api/recovery/run` | Runs a recovery campaign. |
 | `POST` | `/api/campaigns/:id/advance` | Advances the next 30-day workflow step and appends the event/action/step to ClickHouse. |
 

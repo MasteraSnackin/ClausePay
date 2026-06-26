@@ -12,10 +12,12 @@ import {
   ListChecks,
   Mail,
   MousePointerClick,
+  Pencil,
   Play,
   Search,
   Send,
-  ShieldCheck
+  ShieldCheck,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -69,6 +71,9 @@ export function App() {
   const [readiness, setReadiness] = useState<ReadinessPayload | null>(null);
   const [approvedCampaignIds, setApprovedCampaignIds] = useState<Set<string>>(() => new Set());
   const [advancingCampaignId, setAdvancingCampaignId] = useState<string | null>(null);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
+  const [editingCampaignLabel, setEditingCampaignLabel] = useState("");
+  const [renamingCampaignId, setRenamingCampaignId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadInitialData();
@@ -137,6 +142,46 @@ export function App() {
       setError(nextError instanceof Error ? nextError.message : "Campaign advance failed");
     } finally {
       setAdvancingCampaignId(null);
+    }
+  }
+
+  function startRenamingCampaign(campaign: CampaignRun) {
+    setEditingCampaignId(campaign.id);
+    setEditingCampaignLabel(getCampaignDisplayName(campaign));
+    setError(null);
+  }
+
+  function cancelRenamingCampaign() {
+    setEditingCampaignId(null);
+    setEditingCampaignLabel("");
+  }
+
+  async function renameCampaign(campaignId: string) {
+    const label = editingCampaignLabel.trim();
+    if (!label) {
+      setError("Run name cannot be empty.");
+      return;
+    }
+
+    setRenamingCampaignId(campaignId);
+    setError(null);
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label })
+      });
+      if (!response.ok) {
+        throw new Error(await readApiError(response));
+      }
+      const campaign = (await response.json()) as CampaignRun;
+      setActiveCampaign((current) => (current?.id === campaign.id ? campaign : current));
+      setCampaigns((current) => current.map((item) => (item.id === campaign.id ? campaign : item)));
+      cancelRenamingCampaign();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Run rename failed");
+    } finally {
+      setRenamingCampaignId(null);
     }
   }
 
@@ -234,15 +279,60 @@ export function App() {
             <div className="run-list">
               {campaigns.length === 0 && <span className="muted">No campaigns yet.</span>}
               {campaigns.map((campaign) => (
-                <button
-                  className={campaign.id === activeCampaign?.id ? "run-item active" : "run-item"}
-                  key={campaign.id}
-                  type="button"
-                  onClick={() => setActiveCampaign(campaign)}
-                >
-                  <span>{campaign.id}</span>
-                  <small>{new Date(campaign.createdAt).toLocaleString()}</small>
-                </button>
+                <div className={campaign.id === activeCampaign?.id ? "run-item active" : "run-item"} key={campaign.id}>
+                  {editingCampaignId === campaign.id ? (
+                    <form
+                      className="run-rename-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void renameCampaign(campaign.id);
+                      }}
+                    >
+                      <input
+                        aria-label={`Rename run ${campaign.id}`}
+                        autoFocus
+                        maxLength={80}
+                        value={editingCampaignLabel}
+                        onChange={(event) => setEditingCampaignLabel(event.target.value)}
+                      />
+                      <div className="run-actions">
+                        <button
+                          aria-label="Save run name"
+                          className="icon-button"
+                          disabled={renamingCampaignId === campaign.id}
+                          type="submit"
+                        >
+                          {renamingCampaignId === campaign.id ? <Clock3 size={16} className="spin" /> : <CheckCircle2 size={16} />}
+                        </button>
+                        <button
+                          aria-label="Cancel rename"
+                          className="icon-button"
+                          disabled={renamingCampaignId === campaign.id}
+                          onClick={cancelRenamingCampaign}
+                          type="button"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <button className="run-select-button" type="button" onClick={() => setActiveCampaign(campaign)}>
+                        <span>{getCampaignDisplayName(campaign)}</span>
+                        {campaign.label && <small className="run-id">{campaign.id}</small>}
+                        <small>{new Date(campaign.createdAt).toLocaleString()}</small>
+                      </button>
+                      <button
+                        aria-label={`Rename run ${getCampaignDisplayName(campaign)}`}
+                        className="icon-button run-edit-button"
+                        type="button"
+                        onClick={() => startRenamingCampaign(campaign)}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    </>
+                  )}
+                </div>
               ))}
             </div>
           </section>
@@ -687,6 +777,10 @@ function formatCurrency(amount: number, currency: string): string {
     style: "currency",
     currency
   }).format(amount);
+}
+
+function getCampaignDisplayName(campaign: CampaignRun): string {
+  return campaign.label?.trim() || campaign.id;
 }
 
 function buildSponsorProofs(campaign: CampaignRun, clickHouseStats?: ClickHouseLedgerStats): SponsorProof[] {
